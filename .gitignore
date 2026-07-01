@@ -1,0 +1,24 @@
+cd ~/kronos_demo
+cat > .gitignore << 'EOF'
+# 虚拟环境
+kronos_env/
+
+# 模型和数据（体积太大）
+model/
+tokenizer/
+qlib_data/
+
+# 第三方源码（通过 git clone 获取）
+Kronos/
+
+# 预测输出结果
+predictions/
+
+# Python 缓存
+__pycache__/
+*.pyc
+*.pyo
+
+# macOS 系统文件
+.DS_Store
+EOF
