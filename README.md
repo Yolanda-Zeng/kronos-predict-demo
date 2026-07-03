@@ -8,7 +8,12 @@
 
 ```
 kronos_demo/
-├── kronos_qlib_predict.py    ← 主脚本（本手册描述的就是这个）
+├── kronos_qlib_predict.py    ← CLI 主脚本
+├── kronos_core/               ← 共享预测逻辑（CLI 与 Web 共用）
+├── backend/                   ← FastAPI 后端
+├── frontend/                  ← React Web 界面
+├── scripts/start_web.sh       ← 一键启动 Web（构建前端 + 后端）
+├── scripts/dev_web.sh           ← 开发模式（热重载）
 ├── README.md                  ← 本手册
 ├── model/                     ← Kronos 模型权重（从 HuggingFace 下载）
 ├── tokenizer/                 ← Kronos tokenizer（从 HuggingFace 下载）
@@ -17,6 +22,43 @@ kronos_demo/
 ├── predictions/               ← 所有输出结果自动存放在这里（脚本自动创建）
 └── kronos_env/                ← Python 虚拟环境
 ```
+
+---
+
+## Web 界面（新增）
+
+除了命令行，现在可以通过浏览器完成参数配置、异步预测、交互式 K 线查看、历史记录浏览和网格调参。
+
+### 生产模式（单端口访问）
+
+```bash
+cd ~/kronos_demo
+source kronos_env/bin/activate
+./scripts/start_web.sh
+```
+
+浏览器打开 `http://127.0.0.1:8000` 即可。前端静态文件由 FastAPI 托管，API 路径为 `/api/*`。
+
+### 开发模式（前端热重载）
+
+```bash
+cd ~/kronos_demo
+source kronos_env/bin/activate
+./scripts/dev_web.sh
+```
+
+- 前端 dev server: `http://127.0.0.1:5173`（自动代理 `/api` 到后端）
+- 后端 API: `http://127.0.0.1:8000`
+
+### Web 功能概览
+
+| Tab | 功能 |
+|-----|------|
+| **预测** | 表单化 CLI 参数、异步 job、ECharts 交互图表、MAE/RMSE/MAPE（含中文释义）、CSV/PNG 下载 |
+| **历史** | 浏览 `predictions/` 目录下的历史预测记录 |
+| **调参** | 网格搜索 `--tune`，内置参数说明与调试指南、预设方案、组合数预估，最优参数一键回填 |
+
+> CLI 仍然完全可用，Web 与 CLI 共用 `kronos_core/` 中的同一套预测逻辑。
 
 ---
 
@@ -104,17 +146,23 @@ PYTHONPATH=./Kronos python kronos_qlib_predict.py \
 
 ### 模式二：真实未来预测模式（加 `--future` 参数）
 
-用你给的**全部历史数据**作为输入，预测真正还没发生的未来 `horizon` 天。图上没有绿色对比线（因为未来还没发生，没有真实值可对比）。
+用你给的**全部历史数据**作为输入，预测真正还没发生的未来区间。图上没有绿色对比线（因为未来还没发生，没有真实值可对比）。
+
+**`--end` 在未来模式下的含义：**
+
+- 行情数据仍只拉取到**最新交易日**（例如今天 7 月 3 日）。
+- 若 **`--end` 晚于最新 K 线**（例如设为 7 月 10 日），预测区间 = 最新 K 线之后到 **`--end` 之间的全部交易日**（不再仅看 `--horizon`）。
+- 若 **`--end` 不晚于最新 K 线**，则仍按 **`--horizon`** 预测固定天数。
 
 **适合用来：** 看模型对接下来几天走势的判断。
 
 ```bash
-# 示例：预测贵州茅台接下来 5 个交易日的走势
+# 示例：最后 K 线为 6/29，预测延伸至 7/10（中间所有交易日）
 PYTHONPATH=./Kronos python kronos_qlib_predict.py \
   --data-source akshare \
   --instrument 600519 \
   --start 2024-01-01 \
-  --end 2026-06-29 \   # end 设成最新的交易日
+  --end 2026-07-10 \   # 未来模式：预测至该日（需加 --future）
   --model-path ./model \
   --tokenizer-path ./tokenizer \
   --window 64 \
@@ -135,7 +183,7 @@ PYTHONPATH=./Kronos python kronos_qlib_predict.py \
 | `--provider-uri` | 无 | qlib 本地数据路径，`--data-source qlib` 时必填 |
 | `--instrument` | 必填 | 股票代码。qlib模式用 `SH600519`；akshare模式用 `600519`（纯6位数字） |
 | `--start` | 必填 | 历史数据起始日期，格式 `YYYY-MM-DD` |
-| `--end` | 必填 | 历史数据结束日期，格式 `YYYY-MM-DD` |
+| `--end` | 必填 | 历史数据结束日期；**`--future` 且 end 晚于最新 K 线时，亦为预测终点日期** |
 | `--future` | 关闭 | 加上此参数则预测真正的未来（不做历史回测） |
 | `--adjust` | `qfq` | akshare模式的复权方式：`qfq`=前复权 / `hfq`=后复权 / 空=不复权 |
 
@@ -153,7 +201,7 @@ PYTHONPATH=./Kronos python kronos_qlib_predict.py \
 | 参数 | 默认值 | 说明 | 调优建议 |
 |------|--------|------|---------|
 | `--window` | `64` | 给模型看多少天历史K线作为输入 | 最关键参数，建议尝试 64/128/256/384 |
-| `--horizon` | `5` | 预测未来多少个交易日 | 数字越大越难准，先从 5 开始 |
+| `--horizon` | `5` | 回测：扣留对比天数；未来：当 end 不晚于最新 K 线时的预测天数 | 数字越大越难准，先从 5 开始 |
 | `--seed` | `40` | 随机种子，固定后结果可复现 | 对比不同参数时保持不变 |
 | `--temperature` | `1.0` | 采样温度，越低结果越保守/稳定 | 可尝试 1.0 / 0.9 / 0.7 |
 | `--top-p` | `0.9` | nucleus sampling 概率 | 可尝试 0.95 / 0.9 / 0.8 |
@@ -194,11 +242,15 @@ predictions/600519_pred20260701-20260707_w64_h5_run20260630-165530_predict.png
 
 > MAPE < 1% 算相当不错；横向对比不同股票/参数组合时，优先看 MAPE 排序。
 
+Web **预测 Tab** 在历史回测模式下会在指标卡片上展示上述释义；**调参 Tab** 结果表列头同样可点击查看说明。
+
 ---
 
 ## 自动调参模式（--tune）
 
 如果想系统性地找出**哪组参数在历史上效果最好**，可以开启网格搜索模式。脚本会对所有候选参数组合做滚动回测，自动打印最优参数。
+
+> 💡 **Web 调参 Tab** 已内置参数说明、调试 playbook、快速/标准/精细三档预设，以及 grid 组合数与耗时预估，无需翻本文档即可上手。
 
 > ⚠️ 这个模式比较耗时（参数组合数 × 回测窗口数），建议在不赶时间时跑（挂着跑一晚上）。
 

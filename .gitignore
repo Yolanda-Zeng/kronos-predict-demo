@@ -1,5 +1,3 @@
-cd ~/kronos_demo
-cat > .gitignore << 'EOF'
 # 虚拟环境
 kronos_env/
 
@@ -14,6 +12,10 @@ Kronos/
 # 预测输出结果
 predictions/
 
+# Web frontend
+frontend/node_modules/
+frontend/dist/
+
 # Python 缓存
 __pycache__/
 *.pyc
@@ -21,4 +23,3 @@ __pycache__/
 
 # macOS 系统文件
 .DS_Store
-EOF
