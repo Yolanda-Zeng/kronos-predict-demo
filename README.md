@@ -1,5 +1,7 @@
 # Kronos A股K线预测工具 · 使用手册
 
+[![License](https://img.shields.io/badge/License-Apache%202.0-D22128?logo=apache)](./LICENSE)
+
 > 本工具基于 Kronos 金融时间序列模型，支持对 A 股、港美股 日线数据做历史回测和未来走势预测，输出"预测 vs 真实"K线对比图和 csv 结果文件。
 
 ---
@@ -489,6 +491,12 @@ PYTHONPATH=./Kronos python kronos_qlib_predict.py ...
 3. **在最优 window 上调采样参数**：`--temperature` / `--top-p` / `--sample-count`
 4. **不同股票单独调参**：A 股不同标的波动结构差异大，最好每只股票单独找最优参数，不要用一套参数通吃所有标的
 5. **对比多只股票时用 MAPE 排序**：不受股价绝对值影响，最公平
+
+---
+
+## 开源许可证
+
+本项目基于 [Apache License 2.0](./LICENSE) 开源。Kronos 模型、行情数据源及其他第三方依赖仍适用各自的许可证和使用条款。
 
 ---
 
