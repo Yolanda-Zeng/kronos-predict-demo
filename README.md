@@ -1,37 +1,91 @@
-# Kronos A股K线预测工具 · 使用手册
+# Kronos 预测工作台
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-D22128?logo=apache)](./LICENSE)
 
-> 本工具基于 Kronos 金融时间序列模型，支持对 A 股、港美股 日线数据做历史回测和未来走势预测，输出"预测 vs 真实"K线对比图和 csv 结果文件。
+基于 [Kronos](https://github.com/shiyu-coder/Kronos) 金融时间序列模型的 A 股 / 港美股日线 K 线预测工具。
+
+支持 **Web 可视化工作台** 与 **命令行（CLI）** 两套入口，共用同一套 `kronos_core` 预测逻辑：历史回测、未来预测、网格调参、交互式图表与误差指标解读。
+
+<p align="center">
+  <img src="docs/screenshots/predict-result-light.png" alt="Kronos 预测页结果" width="92%" />
+</p>
+
+<p align="center">
+  <em>预测 Tab：参数表单 · 交互式 K 线对比 · MAE / RMSE / MAPE 指标卡 · CSV / PNG 下载</em>
+</p>
 
 ---
 
-## 目录结构
+## 目录
 
-```
-kronos_demo/
-├── kronos_qlib_predict.py    ← CLI 主脚本
-├── kronos_core/               ← 共享预测逻辑（CLI 与 Web 共用）
-├── backend/                   ← FastAPI 后端
-├── frontend/                  ← React Web 界面
-├── scripts/start_web.sh       ← 一键启动 Web（构建前端 + 后端）
-├── scripts/dev_web.sh           ← 开发模式（热重载）
-├── README.md                  ← 本手册
-├── model/                     ← Kronos 模型权重（从 HuggingFace 下载）
-├── tokenizer/                 ← Kronos tokenizer（从 HuggingFace 下载）
-├── Kronos/                    ← 官方源码仓库（git clone 下来的）
-├── qlib_data/                 ← 本地 qlib 历史数据（可选，见下方说明）
-├── predictions/               ← 所有输出结果自动存放在这里（脚本自动创建）
-└── kronos_env/                ← Python 虚拟环境
-```
+- [界面预览](#界面预览)
+- [功能一览](#功能一览)
+- [快速开始（Web）](#快速开始web)
+- [项目结构](#项目结构)
+- [环境准备](#环境准备)
+- [命令行用法](#命令行用法)
+- [两种预测模式](#两种预测模式)
+- [参数说明](#参数说明)
+- [误差指标解读](#误差指标解读)
+- [网格调参](#网格调参)
+- [支持的市场](#支持的市场)
+- [常见问题](#常见问题)
+- [调参最佳实践](#调参最佳实践)
+- [开源许可证](#开源许可证)
 
 ---
 
-## Web 界面（新增）
+## 界面预览
 
-除了命令行，现在可以通过浏览器完成参数配置、异步预测、交互式 K 线查看、历史记录浏览和网格调参。
+Web 界面采用靛蓝–紫渐变品牌风格，内置 **浅色 / 深色** 主题切换（记忆用户选择）。
 
-### 生产模式（单端口访问）
+### 预测页（含结果）
+
+配置股票、数据源、日期区间与预测模式，提交后异步推理，并展示历史 / 预测 / 真实三条曲线与回测误差。
+
+![预测页浅色模式](docs/screenshots/predict-result-light.png)
+
+### 历史页
+
+浏览 `predictions/` 下的历史记录，点击可回放完整图表（含历史与真实对比线），并一键在预测页打开。
+
+![历史页](docs/screenshots/history-light.png)
+
+### 调参页
+
+网格搜索最优参数组合：预设（快速 / 标准 / 精细）、参数说明、耗时预估、调试指南与 MAPE 结果可视化。
+
+![调参页](docs/screenshots/tune-light.png)
+
+### 深色模式
+
+![预测页深色模式](docs/screenshots/predict-dark.png)
+
+| Tab | 能力 |
+|-----|------|
+| **预测** | 表单化参数、异步 Job、ECharts 交互图、MAE / RMSE / MAPE（含中文释义）、CSV / PNG 下载 |
+| **历史** | 浏览历史预测、完整三线图回放、导出明细 |
+| **调参** | 网格搜索、预设方案、参数 / 指标说明、组合数与耗时预估、最优参数一键回填 |
+
+> CLI 与 Web 共用 `kronos_core/`，两边结果一致。
+
+---
+
+## 功能一览
+
+- **历史回测**：扣留末尾 `horizon` 天，与真实收盘价对比，输出 MAE / RMSE / MAPE
+- **未来预测**：`--future` 模式下，当「预测至日期」晚于最新 K 线时，自动延伸预测到该日所有交易日
+- **多市场数据源**：A 股（akshare）、港股（hkshare）、美股（usstock / yfinance）、本地 qlib
+- **交互图表**：历史 / 预测 / 真实曲线、区间缩放、未来预测 markLine
+- **网格调参**：滚动窗口评估参数组合，输出排序表与最优参数
+- **可复现**：固定 `--seed`，结果可复现
+- **主题**：浅色 / 深色切换，偏好写入 `localStorage`
+
+---
+
+## 快速开始（Web）
+
+### 生产模式（单端口）
 
 ```bash
 cd ~/kronos_demo
@@ -39,7 +93,7 @@ source kronos_env/bin/activate
 ./scripts/start_web.sh
 ```
 
-浏览器打开 `http://127.0.0.1:8000` 即可。前端静态文件由 FastAPI 托管，API 路径为 `/api/*`。
+浏览器打开 [http://127.0.0.1:8000](http://127.0.0.1:8000)。前端静态资源由 FastAPI 托管，API 前缀为 `/api/*`。
 
 ### 开发模式（前端热重载）
 
@@ -49,46 +103,72 @@ source kronos_env/bin/activate
 ./scripts/dev_web.sh
 ```
 
-- 前端 dev server: `http://127.0.0.1:5173`（自动代理 `/api` 到后端）
-- 后端 API: `http://127.0.0.1:8000`
+| 服务 | 地址 |
+|------|------|
+| 前端 Vite | http://127.0.0.1:5173 （代理 `/api` → 后端） |
+| 后端 API | http://127.0.0.1:8000 |
 
-### Web 功能概览
+**首次使用建议流程：**
 
-| Tab | 功能 |
-|-----|------|
-| **预测** | 表单化 CLI 参数、异步 job、ECharts 交互图表、MAE/RMSE/MAPE（含中文释义）、CSV/PNG 下载 |
-| **历史** | 浏览 `predictions/` 目录下的历史预测记录 |
-| **调参** | 网格搜索 `--tune`，内置参数说明与调试指南、预设方案、组合数预估，最优参数一键回填 |
-
-> CLI 仍然完全可用，Web 与 CLI 共用 `kronos_core/` 中的同一套预测逻辑。
+1. 在 **预测** Tab 填写股票代码、日期、模式，点击「开始预测」
+2. 在 **历史** Tab 回看本次与历史结果
+3. 需要调优时，在 **调参** Tab 选预设后跑网格搜索，再「应用到预测表单」
 
 ---
 
-## 快速开始
+## 项目结构
 
-### 第一步：激活虚拟环境
+```
+kronos_demo/
+├── kronos_qlib_predict.py    # CLI 入口
+├── kronos_core/                # 共享预测 / 调参 / 图表 / 历史元数据逻辑
+├── backend/                    # FastAPI 后端（异步 Job）
+├── frontend/                   # React + Vite + Tailwind + ECharts
+├── scripts/
+│   ├── start_web.sh            # 构建前端 + 启动后端
+│   └── dev_web.sh              # 开发模式
+├── docs/screenshots/           # README 配图
+├── tests/                      # 核心逻辑单测
+├── openspec/                   # 规格与变更记录
+├── model/                      # Kronos 模型权重（需自行下载）
+├── tokenizer/                  # Tokenizer（需自行下载）
+├── Kronos/                     # 官方源码（git clone）
+├── qlib_data/                  # 可选本地 qlib 数据
+├── predictions/                # 预测输出（自动创建）
+└── kronos_env/                 # Python 虚拟环境
+```
 
-每次打开终端都要先执行这一步：
+---
+
+## 环境准备
 
 ```bash
 cd ~/kronos_demo
 source kronos_env/bin/activate
 ```
 
-激活成功后，终端最前面会出现 `(kronos_env)` 字样。
+激活成功后，终端前缀会出现 `(kronos_env)`。
 
-### 第二步：跑第一次预测
+依赖要点：
 
-**模式A：联网获取最新数据（推荐，数据最新）**
+- Python 依赖见 `Kronos/requirements.txt` 与 `backend/requirements.txt`
+- 前端依赖：`cd frontend && npm install`
+- 模型与 tokenizer 需放到 `./model`、`./tokenizer`（体积大，不纳入 Git）
 
-> 注意：运行前请确保关闭 Clash 等代理软件的"系统代理"开关（东方财富是国内接口，走代理反而连不上）。
+---
+
+## 命令行用法
+
+### 第一次 CLI 预测（推荐 akshare）
+
+> 拉取 A 股前请关闭 Clash 等**系统代理**（东方财富为国内接口，走代理容易失败）。
 
 ```bash
 PYTHONPATH=./Kronos python kronos_qlib_predict.py \
   --data-source akshare \
   --instrument 600519 \
   --start 2024-01-01 \
-  --end 2026-06-20 \
+  --end 2025-06-01 \
   --model-path ./model \
   --tokenizer-path ./tokenizer \
   --window 64 \
@@ -96,7 +176,7 @@ PYTHONPATH=./Kronos python kronos_qlib_predict.py \
   --seed 40
 ```
 
-**模式B：使用本地 qlib 历史数据（离线，数据截止 2020-09-25）**
+本地 qlib（离线，数据通常截止较早）：
 
 ```bash
 PYTHONPATH=./Kronos python kronos_qlib_predict.py \
@@ -112,31 +192,28 @@ PYTHONPATH=./Kronos python kronos_qlib_predict.py \
   --seed 40
 ```
 
-运行成功后，预测图和 csv 结果会自动保存到 `predictions/` 文件夹，文件名里带有股票代码和预测日期区间，不会互相覆盖。
+结果默认写入 `predictions/`，文件名包含股票代码、预测区间、参数与运行时间。
 
 ---
 
 ## 两种预测模式
 
-### 模式一：历史回测模式（默认，不加任何额外参数）
+### 1. 历史回测（默认）
 
-脚本会自动把你给的数据里**最后 `horizon` 天扣留下来**，当作"真实答案"，和模型预测结果对比，在图上画出：
+自动扣留末尾 `horizon` 天作为「真实答案」，与预测对比。图中：
 
-- 🔵 蓝线：历史真实收盘价
-- 🔴 红虚线：模型预测收盘价
-- 🟢 绿线：真实收盘价（用于与预测对比）
+- **历史收盘价**（灰 / 蓝灰）
+- **预测收盘价**（红虚线）
+- **真实收盘价**（青 / 绿）
 
-同时在终端输出误差指标（MAE / RMSE / MAPE），数值越小说明预测越准。
-
-**适合用来：** 检验模型在某段历史区间预测得准不准，做参数调优时用这个模式。
+适合：检验历史区间准确性、做参数调优。
 
 ```bash
-# 示例：用 2024 全年数据做历史回测，扣留最后 5 天对比
 PYTHONPATH=./Kronos python kronos_qlib_predict.py \
   --data-source akshare \
   --instrument 600519 \
   --start 2024-01-01 \
-  --end 2026-06-20 \   # end 比今天早几天，确保"扣留的5天"都是真实已发生的数据
+  --end 2025-06-01 \
   --model-path ./model \
   --tokenizer-path ./tokenizer \
   --window 64 \
@@ -144,27 +221,25 @@ PYTHONPATH=./Kronos python kronos_qlib_predict.py \
   --seed 40
 ```
 
----
+### 2. 未来预测（`--future`）
 
-### 模式二：真实未来预测模式（加 `--future` 参数）
+使用全部可用历史 K 线预测尚未发生的区间（图上通常无真实对比线）。
 
-用你给的**全部历史数据**作为输入，预测真正还没发生的未来区间。图上没有绿色对比线（因为未来还没发生，没有真实值可对比）。
+**`--end` / Web「预测至日期」语义：**
 
-**`--end` 在未来模式下的含义：**
+| 条件 | 行为 |
+|------|------|
+| `end` **晚于** 最新 K 线 | 预测从次一交易日延伸至 `end` 之间全部交易日 |
+| `end` **不晚于** 最新 K 线 | 仍按 `horizon` 预测固定天数 |
 
-- 行情数据仍只拉取到**最新交易日**（例如今天 7 月 3 日）。
-- 若 **`--end` 晚于最新 K 线**（例如设为 7 月 10 日），预测区间 = 最新 K 线之后到 **`--end` 之间的全部交易日**（不再仅看 `--horizon`）。
-- 若 **`--end` 不晚于最新 K 线**，则仍按 **`--horizon`** 预测固定天数。
-
-**适合用来：** 看模型对接下来几天走势的判断。
+行情数据本身仍只拉到最新交易日；延伸部分由模型生成未来时间戳。
 
 ```bash
-# 示例：最后 K 线为 6/29，预测延伸至 7/10（中间所有交易日）
 PYTHONPATH=./Kronos python kronos_qlib_predict.py \
   --data-source akshare \
   --instrument 600519 \
   --start 2024-01-01 \
-  --end 2026-07-10 \   # 未来模式：预测至该日（需加 --future）
+  --end 2026-07-10 \
   --model-path ./model \
   --tokenizer-path ./tokenizer \
   --window 64 \
@@ -173,97 +248,79 @@ PYTHONPATH=./Kronos python kronos_qlib_predict.py \
   --future
 ```
 
+Web：**预测模式** 选「预测未来」，将「预测至日期」设为希望覆盖的最后一天。
+
 ---
 
-## 全部参数说明
+## 参数说明
 
-### 基础参数
+### 基础
 
-| 参数 | 默认值 | 说明 |
-|------|--------|------|
-| `--data-source` | `qlib` | 数据来源：`qlib`（本地数据）或 `akshare`（联网实时） |
-| `--provider-uri` | 无 | qlib 本地数据路径，`--data-source qlib` 时必填 |
-| `--instrument` | 必填 | 股票代码。qlib模式用 `SH600519`；akshare模式用 `600519`（纯6位数字） |
-| `--start` | 必填 | 历史数据起始日期，格式 `YYYY-MM-DD` |
-| `--end` | 必填 | 历史数据结束日期；**`--future` 且 end 晚于最新 K 线时，亦为预测终点日期** |
-| `--future` | 关闭 | 加上此参数则预测真正的未来（不做历史回测） |
-| `--adjust` | `qfq` | akshare模式的复权方式：`qfq`=前复权 / `hfq`=后复权 / 空=不复权 |
+| 参数 | 默认 | 说明 |
+|------|------|------|
+| `--data-source` | `qlib` | `qlib` / `akshare` / `hkshare` / `usstock` |
+| `--provider-uri` | — | qlib 本地数据路径 |
+| `--instrument` | 必填 | 股票代码（见下方市场说明） |
+| `--start` / `--end` | 必填 | 历史区间；未来模式且 end 晚于最新 K 线时，end 亦为预测终点 |
+| `--future` | 关 | 未来预测 |
+| `--adjust` | `qfq` | akshare 复权：`qfq` / `hfq` / 空 |
 
-### 模型参数
+### 模型
 
-| 参数 | 默认值 | 说明 |
-|------|--------|------|
-| `--model-path` | 必填 | Kronos 模型权重所在文件夹路径 |
-| `--tokenizer-path` | 必填 | Kronos tokenizer 所在文件夹路径 |
-| `--device` | `cpu` | 运行设备，CPU 环境保持默认即可 |
-| `--max-context` | `512` | 模型支持的最大上下文长度，不建议改动 |
+| 参数 | 默认 | 说明 |
+|------|------|------|
+| `--model-path` | 必填 | 模型目录 |
+| `--tokenizer-path` | 必填 | tokenizer 目录 |
+| `--device` | `cpu` | `cpu` / `cuda` / `mps` |
+| `--max-context` | `512` | 最大上下文，一般不改 |
 
-### 预测参数（影响预测效果，可调优）
+### 预测（影响效果）
 
-| 参数 | 默认值 | 说明 | 调优建议 |
-|------|--------|------|---------|
-| `--window` | `64` | 给模型看多少天历史K线作为输入 | 最关键参数，建议尝试 64/128/256/384 |
-| `--horizon` | `5` | 回测：扣留对比天数；未来：当 end 不晚于最新 K 线时的预测天数 | 数字越大越难准，先从 5 开始 |
-| `--seed` | `40` | 随机种子，固定后结果可复现 | 对比不同参数时保持不变 |
-| `--temperature` | `1.0` | 采样温度，越低结果越保守/稳定 | 可尝试 1.0 / 0.9 / 0.7 |
-| `--top-p` | `0.9` | nucleus sampling 概率 | 可尝试 0.95 / 0.9 / 0.8 |
-| `--sample-count` | `1` | 采样次数，多次取均值更稳定 | 可尝试 1 / 5 / 10，数值越大越慢 |
+| 参数 | 默认 | 说明 | 调优建议 |
+|------|------|------|----------|
+| `--window` | `64` | 输入历史天数 | 优先尝试 `64/128/256/384` |
+| `--horizon` | `5` | 回测扣留天数；未来模式且 end ≤ 最新 K 线时的预测天数 | 先从 5 开始 |
+| `--seed` | `40` | 随机种子 | 对比实验时保持不变 |
+| `--temperature` | `1.0` | 采样温度 | `1.0 / 0.9 / 0.7` |
+| `--top-p` | `0.9` | nucleus sampling | `0.95 / 0.9 / 0.8` |
+| `--sample-count` | `1` | 采样次数，取均值更稳 | `1 / 5 / 10`（越大越慢） |
 
-### 输出参数
-
-| 参数 | 默认值 | 说明 |
-|------|--------|------|
-| `--output-dir` | `predictions` | 所有结果文件统一存放的文件夹 |
-| `--out` | 自动生成 | 手动指定 csv 输出路径（不填则自动命名） |
-| `--chart-out` | 自动生成 | 手动指定图片输出路径（不填则自动命名） |
-
-**自动生成的文件名格式：**
-
-```
-predictions/600519_pred20260701-20260707_w64_h5_run20260630-165530_predict.csv
-predictions/600519_pred20260701-20260707_w64_h5_run20260630-165530_predict.png
-```
-
-文件名里包含：股票代码、预测日期区间（pred）、窗口参数、运行时间，不同次运行不会互相覆盖。
+Web **高级参数** 与 **调参 Tab** 内置中文说明与调试提示，可直接点问号查看。
 
 ---
 
 ## 误差指标解读
 
-历史回测模式下，终端会输出：
+历史回测会输出例如：
 
+```text
+MAE=1.4426, RMSE=1.4908, MAPE=1.19%
 ```
-[INFO] 预测区间误差（与真实值对比）：MAE=0.0639, RMSE=0.0773, MAPE=0.80%
-```
 
-| 指标 | 全称 | 含义 | 怎么看 |
-|------|------|------|--------|
-| MAE | 平均绝对误差 | 预测价格平均偏离真实价格多少元 | 绝对值，受股价大小影响，横向对比不同股票时参考价值有限 |
-| RMSE | 均方根误差 | 和MAE类似，但对"偏差特别大的天"惩罚更重 | 通常 ≥ MAE；两者越接近说明每天误差越均匀 |
-| MAPE | 平均绝对百分比误差 | 预测价格平均偏离真实价格的百分比 | **最值得看的指标**，不受股价绝对值影响，横向对比最公平 |
+| 指标 | 含义 | 怎么看 |
+|------|------|--------|
+| **MAE** | 平均绝对误差（价格量纲） | 受股价高低影响，跨股票横向对比有限 |
+| **RMSE** | 均方根误差 | 对大偏差更敏感；通常 ≥ MAE |
+| **MAPE** | 平均绝对百分比误差 | **优先看**，横向对比最公平 |
 
-> MAPE < 1% 算相当不错；横向对比不同股票/参数组合时，优先看 MAPE 排序。
-
-Web **预测 Tab** 在历史回测模式下会在指标卡片上展示上述释义；**调参 Tab** 结果表列头同样可点击查看说明。
+> MAPE 越小越好。Web 指标卡可展开详细释义；调参表头亦可查看说明。
 
 ---
 
-## 自动调参模式（--tune）
+## 网格调参
 
-如果想系统性地找出**哪组参数在历史上效果最好**，可以开启网格搜索模式。脚本会对所有候选参数组合做滚动回测，自动打印最优参数。
+系统搜索历史上表现更好的参数组合（耗时：组合数 × 滚动窗口数）。
 
-> 💡 **Web 调参 Tab** 已内置参数说明、调试 playbook、快速/标准/精细三档预设，以及 grid 组合数与耗时预估，无需翻本文档即可上手。
+**Web：** 直接用调参 Tab（推荐「快速试跑」先验证通路）。
 
-> ⚠️ 这个模式比较耗时（参数组合数 × 回测窗口数），建议在不赶时间时跑（挂着跑一晚上）。
-
-**基础用法：**
+**CLI：**
 
 ```bash
 PYTHONPATH=./Kronos python kronos_qlib_predict.py \
   --data-source akshare \
   --instrument 600519 \
   --start 2023-01-01 \
-  --end 2026-06-20 \
+  --end 2025-06-01 \
   --model-path ./model \
   --tokenizer-path ./tokenizer \
   --horizon 5 \
@@ -277,220 +334,90 @@ PYTHONPATH=./Kronos python kronos_qlib_predict.py \
   --tune-max-windows 120
 ```
 
-**调参相关参数说明：**
+| 参数 | 默认 | 说明 |
+|------|------|------|
+| `--tune` | 关 | 开启调参 |
+| `--grid-window` | `64,128,256` | window 候选 |
+| `--grid-temp` | `1.0,0.9` | 温度候选 |
+| `--grid-top-p` | `0.95,0.9` | top_p 候选 |
+| `--grid-sample-count` | `1,5` | 采样次数候选 |
+| `--tune-stride` | `5` | 滚动步长（越小越准越慢） |
+| `--tune-max-windows` | `120` | 每组参数最多评估窗口数 |
 
-| 参数 | 默认值 | 说明 |
-|------|--------|------|
-| `--tune` | 关闭 | 加上此参数开启调参模式 |
-| `--grid-window` | `64,128,256` | window 候选值，逗号分隔，会逐一测试 |
-| `--grid-temp` | `1.0,0.9` | 采样温度候选值 |
-| `--grid-top-p` | `0.95,0.9` | top_p 候选值 |
-| `--grid-sample-count` | `1,5` | 采样次数候选值 |
-| `--tune-stride` | `5` | 滚动回测步长（每隔多少天评估一次），越小越准但越慢 |
-| `--tune-max-windows` | `120` | 每组参数最多评估多少个窗口（控制总耗时） |
-| `--tune-out` | 自动生成 | 调参结果 csv 路径 |
-
-**跑完后你会看到：**
-
-```
-[BEST] 最优参数组合（按 RMSE 排序）：
-  window=128, T=0.9, top_p=0.95, sample_count=5
-  MAE=0.0412, RMSE=0.0531, MAPE=0.62%
-```
-
-把最优参数填入普通预测命令，再跑一次正式预测即可：
-
-```bash
-PYTHONPATH=./Kronos python kronos_qlib_predict.py \
-  --data-source akshare \
-  --instrument 600519 \
-  --start 2024-01-01 \
-  --end 2026-06-29 \
-  --model-path ./model \
-  --tokenizer-path ./tokenizer \
-  --window 128 \         # ← 换成最优参数
-  --horizon 5 \
-  --temperature 0.9 \   # ← 换成最优参数
-  --top-p 0.95 \        # ← 换成最优参数
-  --sample-count 5 \    # ← 换成最优参数
-  --seed 40 \
-  --future
-```
+跑完后把最优 `window / temperature / top_p / sample_count` 填回普通预测命令；Web 可一键「应用到预测表单」。
 
 ---
 
-## 支持的市场和股票
+## 支持的市场
 
-### A股（--data-source akshare）
+### A 股（`akshare`）
 
-理论上支持所有 A 股上市公司，`--instrument` 填 6 位数字股票代码（不带 SH/SZ 前缀）：
+`--instrument`：6 位数字（如 `600519`、`000858`）。关闭系统代理。
 
-```
-沪市（6开头）：600519（茅台）、600036（招商银行）、600276（恒瑞医药）...
-深市（0/3开头）：000858（五粮液）、000333（美的）、300750（宁德时代）...
-```
+### 港股（`hkshare`）
 
-> 注意：运行前请关闭系统代理（东方财富是国内接口，走代理反而会报错）
+`--instrument`：5 位数字（如 `00700` 腾讯）。走东方财富，同样建议直连。
 
-**示例命令：**
-```bash
-PYTHONPATH=./Kronos python kronos_qlib_predict.py \
-  --data-source akshare \
-  --instrument 600519 \
-  --start 2024-01-01 --end 2026-06-20 \
-  --model-path ./model --tokenizer-path ./tokenizer \
-  --window 64 --horizon 5 --seed 40
-```
+### 美股（`usstock`）
 
----
+`--instrument`：ticker（如 `AAPL`）。依赖 `yfinance`，需能访问境外网络。
 
-### 港股（--data-source hkshare）
-
-通过东方财富接口获取，`--instrument` 填 5 位数字港股代码（不带 HK 前缀）：
-
-```
-00700  腾讯控股
-09988  阿里巴巴（港股）
-00941  中国移动
-03690  美团
-01810  小米集团
-02318  中国平安
-00005  汇丰控股
-```
-
-> 注意：同样需要关闭系统代理（东方财富港股接口也是走国内线路）
-
-**示例命令：**
-```bash
-PYTHONPATH=./Kronos python kronos_qlib_predict.py \
-  --data-source hkshare \
-  --instrument 00700 \
-  --start 2024-01-01 --end 2026-06-20 \
-  --model-path ./model --tokenizer-path ./tokenizer \
-  --window 64 --horizon 5 --seed 40
-```
-
----
-
-### 美股（--data-source usstock）
-
-通过 yfinance 获取，`--instrument` 填美股 ticker（大小写均可）：
-
-```
-AAPL   苹果
-TSLA   特斯拉
-MSFT   微软
-GOOGL  谷歌
-AMZN   亚马逊
-NVDA   英伟达
-META   Meta（Facebook）
-QQQ    纳斯达克100 ETF
-SPY    标普500 ETF
-```
-
-> 注意：yfinance 需要访问 Yahoo Finance（境外网站），这个模式**需要开 VPN**
-
-**先安装依赖：**
 ```bash
 pip install yfinance
 ```
 
-**示例命令：**
-```bash
-PYTHONPATH=./Kronos python kronos_qlib_predict.py \
-  --data-source usstock \
-  --instrument AAPL \
-  --start 2024-01-01 --end 2026-06-20 \
-  --model-path ./model --tokenizer-path ./tokenizer \
-  --window 64 --horizon 5 --seed 40
-```
+### 本地 qlib
+
+`--instrument` 需带交易所前缀，如 `SH600519`。数据覆盖范围以本地为准。
 
 ---
 
-### qlib 本地数据（--data-source qlib）
+## 常见问题
 
-数据截止 2020-09-25，已验证可用的股票：
+**1. akshare / hkshare：ProxyError / RemoteDisconnected**
 
-| 代码 | 公司 | 数据起始 |
-|------|------|---------|
-| SH600519 | 贵州茅台 | 2001-08-27 |
-| SH600036 | 招商银行 | 2002-04-09 |
-| SH600276 | 恒瑞医药 | 2000-10-18 |
-| SH600900 | 长江电力 | 2003-11-18 |
-| SH601318 | 中国平安 | 2007-03-01 |
-| SH601888 | 中国中免 | 2009-10-15 |
-| SZ000333 | 美的集团 | 2013-09-18 |
-| SZ000858 | 五粮液   | 1999-11-10 |
+关闭系统代理，或让 `eastmoney.com` 走 DIRECT。
 
-查询某只股票是否在本地数据里：
-```bash
-grep "600519" qlib_data/instruments/all.txt
-```
+**2. usstock 超时**
 
----
+需要 VPN，先在浏览器验证 [Yahoo Finance](https://finance.yahoo.com)。
 
-## 常见问题 / 报错处理
-
-### 问题1：akshare / hkshare 模式报 ProxyError / RemoteDisconnected
-
-东方财富是国内接口（A股和港股都走这个），走代理反而会失败。解决方法：
-
-```bash
-# 临时关掉系统代理
-networksetup -setwebproxystate "Wi-Fi" off
-networksetup -setsecurewebproxystate "Wi-Fi" off
-
-# 用完想恢复
-networksetup -setwebproxystate "Wi-Fi" on
-networksetup -setsecurewebproxystate "Wi-Fi" on
-```
-
-或者在 Clash 等代理软件的规则里，把 `eastmoney.com` 加入直连(DIRECT)名单。
-
-### 问题1b：usstock 模式连不上 / 超时
-
-Yahoo Finance 是境外网站，美股模式**需要开 VPN** 才能访问。如果 VPN 已开但还是超时，检查 VPN 是否正常工作（可以先在浏览器里打开 `https://finance.yahoo.com` 验证）。
-
-### 问题2：ModuleNotFoundError: No module named 'einops'（或其他模块）
-
-缺少 Kronos 依赖库，一次性装齐：
+**3. `ModuleNotFoundError: einops` 等**
 
 ```bash
 pip install -r Kronos/requirements.txt
+pip install -r backend/requirements.txt
 ```
 
-### 问题3：PYTHONPATH 忘了加，报 No module named 'model'
+**4. `No module named 'model'`**
 
-命令最前面必须加 `PYTHONPATH=./Kronos`，缺了这个 Python 找不到 Kronos 的源码：
+命令前加 `PYTHONPATH=./Kronos`（CLI）；Web 脚本已自动设置。
 
-```bash
-PYTHONPATH=./Kronos python kronos_qlib_predict.py ...
-```
+**5. 没有取到数据**
 
-### 问题4：RuntimeError: 没有取到数据
+检查代码格式（akshare 不带 SH/SZ；qlib 要带）、网络与日期是否在数据范围内。
 
-- **akshare 模式**：检查股票代码格式（6位纯数字，不带SH/SZ），以及网络/代理状态
-- **qlib 模式**：检查 `--instrument` 是否带了 SH/SZ 前缀（qlib 需要），以及 `--start/--end` 是否在数据覆盖范围内（截止 2020-09-25）
+**6. 预测很慢**
 
-### 问题5：预测很慢
+CPU 推理偏慢；`window=64, sample_count=1` 最快。调参会乘上千上万次评估，宜用快速预设先试。
 
-- CPU 推理本身就比 GPU 慢，`window=64, sample_count=1` 是最快的参数组合
-- 不要把 `--window` 和 `--sample-count` 都调很大，会成倍增加时间
-- 第一次运行还需要把模型加载进内存，会比后续跑更慢一些，属正常现象
+**7. 历史页只有预测红线**
 
-### 问题6：图上三条线没有衔接
+旧记录缺少 `*_meta.json`。重新跑一次预测即可保存完整历史 + 真实曲线。
 
-是正常现象，蓝线（历史）和红/绿线（预测/真实）是分开画的，视觉上有个小跳跃。如果很在意外观，可以联系开发者修改画图逻辑。
+**8. 未来模式红线到不了所选日期**
+
+确认已勾选「预测未来 / `--future`」，且结束日晚于最新交易日；否则只会按 `horizon` 延伸。
 
 ---
 
-## 调参最佳实践（按优先级）
+## 调参最佳实践
 
-1. **先固定 `--seed`，建立 baseline**：用默认参数跑通一次，记录 MAPE 作为基准线
-2. **优先调 `--window`**：这是对结果影响最大的参数，建议网格 `64,128,256,384`
-3. **在最优 window 上调采样参数**：`--temperature` / `--top-p` / `--sample-count`
-4. **不同股票单独调参**：A 股不同标的波动结构差异大，最好每只股票单独找最优参数，不要用一套参数通吃所有标的
-5. **对比多只股票时用 MAPE 排序**：不受股价绝对值影响，最公平
+1. 固定 `--seed`，建立 baseline MAPE
+2. 优先网格搜索 `--window`
+3. 在最优 window 上调 `temperature / top_p / sample_count`
+4. **每只股票单独调参**，不要一套参数通吃
+5. 跨标的比较一律看 **MAPE**
 
 ---
 
@@ -500,4 +427,4 @@ PYTHONPATH=./Kronos python kronos_qlib_predict.py ...
 
 ---
 
-*文档版本：v1.0 · 2026年6月*
+*文档更新：2026-07*
